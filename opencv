@@ -1,0 +1,77 @@
+import cv2
+import cv2.aruco as aruco
+import numpy as np
+
+def estimate_pose():
+    # 1. Initialize the ArUco dictionary and parameters
+    # This list allows the script to detect 4x4, 5x5, and 6x6 markers
+    aruco_dicts = [
+        aruco.getPredefinedDictionary(aruco.DICT_4X4_50),
+        aruco.getPredefinedDictionary(aruco.DICT_5X5_50),
+        aruco.getPredefinedDictionary(aruco.DICT_6X6_50)
+    ]
+    parameters = aruco.DetectorParameters()
+
+    # 2. Camera Calibration Data (Placeholders)
+    # Replace these with your actual calibration results for better accuracy
+    # These are generic values for a standard 720p/1080p webcam
+    camera_matrix = np.array([[800, 0, 320], 
+                              [0, 800, 240], 
+                              [0, 0, 1]], dtype=float)
+    dist_coeffs = np.zeros((4, 1)) # Assuming no lens distortion for now
+
+    # Marker size in meters (Measure your printed tag!)
+    marker_length = 0.05 
+
+    cap = cv2.VideoCapture(0)
+
+    print("Press 'q' to quit.")
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        
+        # Loop through different dictionaries to find markers
+        for adict in aruco_dicts:
+            corners, ids, rejected = aruco.detectMarkers(gray, adict, parameters=parameters)
+
+            if ids is not None:
+                # Draw the detected markers
+                aruco.drawDetectedMarkers(frame, corners, ids)
+
+                # Estimate pose for each marker
+                # rvec = rotation vector, tvec = translation vector
+                obj_points = np.array([[-marker_length/2,  marker_length/2, 0],
+                                       [ marker_length/2,  marker_length/2, 0],
+                                       [ marker_length/2, -marker_length/2, 0],
+                                       [-marker_length/2, -marker_length/2, 0]], dtype=np.float32)
+
+                for i in range(len(ids)):
+                    # Estimate Pose
+                    _, rvec, tvec = cv2.solvePnP(obj_points, corners[i], camera_matrix, dist_coeffs)
+
+                    # Draw Axis (Red=X, Green=Y, Blue=Z)
+                    cv2.drawFrameAxes(frame, camera_matrix, dist_coeffs, rvec, tvec, 0.03)
+
+                    # Calculate Distance (Depth)
+                    # The Z-component of the translation vector is the distance from the camera
+                    distance = np.linalg.norm(tvec)
+                    
+                    # Display coordinates and distance
+                    text = f"ID: {ids[i][0]} Dist: {distance:.2f}m"
+                    cv2.putText(frame, text, (int(corners[i][0][0][0]), int(corners[i][0][0][1]) - 10),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+        cv2.imshow('ArUco Pose Estimation', frame)
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    cap.release()
+    cv2.destroyAllWindows()
+
+if __name__ == "__main__":
+    estimate_pose()
